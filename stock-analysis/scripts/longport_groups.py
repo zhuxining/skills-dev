@@ -20,7 +20,7 @@ Usage:
 Commands:
     list: 列出所有分组
     create: 创建新分组
-    update: 更新分组成员（增/删/替换）
+    update: 更新分组成员(增/删/替换)
     get-symbols: 导出分组成员列表
     delete: 清空分组
 
@@ -84,7 +84,7 @@ def create_group(args: argparse.Namespace) -> None:
 
 
 def update_group(args: argparse.Namespace) -> None:
-    """更新分组成员（增/删/替换）。
+    """更新分组成员(增/删/替换)。
 
     Args:
         args: 包含 id 和操作参数的命名空间
@@ -119,8 +119,10 @@ def update_group(args: argparse.Namespace) -> None:
         if updated is None:
             print(f"✗ 错误: 分组不存在 (ID={args.id})", file=sys.stderr)
             sys.exit(1)
-
-        print(f"✓ 分组已更新: ID={args.id}, Name={updated.name}, Count={len(updated.securities)}")
+        else:
+            print(
+                f"✓ 分组已更新: ID={args.id}, Name={updated.name}, Count={len(updated.securities)}"
+            )
 
 
 def get_symbols(args: argparse.Namespace) -> None:
@@ -136,8 +138,8 @@ def get_symbols(args: argparse.Namespace) -> None:
         if group is None:
             print(f"✗ 错误: 分组不存在 (ID={args.id})", file=sys.stderr)
             sys.exit(1)
-
-        symbols = [s.symbol for s in group.securities]
+        else:
+            symbols = [s.symbol for s in group.securities]
 
     if not symbols:
         print("分组为空")
@@ -152,7 +154,7 @@ def get_symbols(args: argparse.Namespace) -> None:
 
 
 def delete_group(args: argparse.Namespace) -> None:
-    """清空分组（替换为空列表）。
+    """清空分组(替换为空列表)。
 
     Args:
         args: 包含 id 参数的命名空间
@@ -164,9 +166,9 @@ def delete_group(args: argparse.Namespace) -> None:
         if group is None:
             print(f"✗ 错误: 分组不存在 (ID={args.id})", file=sys.stderr)
             sys.exit(1)
-
-        ctx.update_watchlist_group(args.id, securities=[], mode=SecuritiesUpdateMode.Replace)
-        print(f"✓ 分组已清空: ID={args.id}, Name={group.name}")
+        else:
+            ctx.update_watchlist_group(args.id, securities=[], mode=SecuritiesUpdateMode.Replace)
+            print(f"✓ 分组已清空: ID={args.id}, Name={group.name}")
 
 
 def main() -> None:
@@ -183,19 +185,19 @@ def main() -> None:
     # create
     create_p = subparsers.add_parser("create", help="创建新分组")
     create_p.add_argument("--name", required=True, help="分组名称")
-    create_p.add_argument("--symbols", help="初始成员，逗号分隔，如 700.HK,AAPL.US")
+    create_p.add_argument("--symbols", help="初始成员,逗号分隔,如 700.HK,AAPL.US")
 
     # update
     update_p = subparsers.add_parser("update", help="更新分组成员")
     update_p.add_argument("--id", type=int, required=True, help="分组 ID")
-    update_p.add_argument("--add-symbols", help="增加成员，逗号分隔")
-    update_p.add_argument("--remove-symbols", help="删除成员，逗号分隔")
-    update_p.add_argument("--replace-symbols", help="替换全部成员，逗号分隔")
+    update_p.add_argument("--add-symbols", help="增加成员,逗号分隔")
+    update_p.add_argument("--remove-symbols", help="删除成员,逗号分隔")
+    update_p.add_argument("--replace-symbols", help="替换全部成员,逗号分隔")
 
     # get-symbols
     get_p = subparsers.add_parser("get-symbols", help="导出分组成员")
     get_p.add_argument("--id", type=int, required=True, help="分组 ID")
-    get_p.add_argument("--output", help="输出文件路径（逐行一个符号）；不填则打印到 stdout")
+    get_p.add_argument("--output", help="输出文件路径(逐行一个符号);不填则打印到 stdout")
 
     # delete
     delete_p = subparsers.add_parser("delete", help="清空分组")

@@ -85,7 +85,7 @@ wheels = [
 
 [[package]]
 name = "akshare"
-version = "1.18.9"
+version = "1.18.10"
 source = { registry = "http://mirrors.aliyun.com/pypi/simple/" }
 dependencies = [
     { name = "aiohttp" },
@@ -107,9 +107,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "xlrd" },
 ]
-sdist = { url = "http://mirrors.aliyun.com/pypi/packages/74/3f/eb65c38e1cd8f1ffe4c29816e79bc9436a1c42e488c8f1611977e4bc3385/akshare-1.18.9.tar.gz", hash = "sha256:b3cd43456b578adb76296d72347b0a018db3aaf8e3c967ded2e6e76ddc1ab86c" }
+sdist = { url = "http://mirrors.aliyun.com/pypi/packages/fa/04/9a43970c8e19c28d697681ad79139e04e1f42e89b21cc5b9e20a84e3f2f7/akshare-1.18.10.tar.gz", hash = "sha256:992554fafc5a4099bc005189422850d6d27042f83c197056168514ce1b1ecdf4" }
 wheels = [
-    { url = "http://mirrors.aliyun.com/pypi/packages/af/54/fca9d9451b6b99289cc3ade7517258bc35d0c03d84672650ed893fd9b4f7/akshare-1.18.9-py3-none-any.whl", hash = "sha256:6969ef897b277308fb662eac41ec1f33138661f074aee3899c78df83ff8ed97d" },
+    { url = "http://mirrors.aliyun.com/pypi/packages/d9/55/9615bd8b8c51df8ea833291b96e848eeaac7e08273503fe94ac56c4b4754/akshare-1.18.10-py3-none-any.whl", hash = "sha256:258ab5f97309bc70f017ca070a65338f9473e5df961c15ba300966eef93702cb" },
 ]
 
 [[package]]
@@ -666,7 +666,7 @@ wheels = [
 [[package]]
 name = "scripts"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "akshare" },
     { name = "longport" },

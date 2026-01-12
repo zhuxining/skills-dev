@@ -1,19 +1,30 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#     "pyyaml>=6.0",
+# ]
+# ///
 """
 Skill Packager - Copies skill folder to dist directory with exclusions
 
 Usage:
-    python build/package_skill.py <skill-folder>
+    uv run build/package_skill.py <skill-folder>
 
 Example:
-    python build/package_skill.py skill-name
+    uv run build/package_skill.py skill-name
 """
 
 import fnmatch
-import re
 import shutil
 import sys
 from pathlib import Path
+
+# Ensure we can import from the same directory
+if str(Path(__file__).parent) not in sys.path:
+    sys.path.append(str(Path(__file__).parent))
+
+from quick_validate import validate_skill
 
 # Files and directories to exclude from packaging
 EXCLUDE_PATTERNS = {
@@ -63,49 +74,10 @@ EXCLUDE_PATTERNS = {
     "AGENTS.md",
     "README.md",
     "readme.md",
-    ".pyproject.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
 }
-
-
-def validate_skill(skill_path):
-    """
-    Basic validation of a skill (simplified, no YAML parsing).
-
-    Args:
-        skill_path: Path to the skill folder
-
-    Returns:
-        Tuple of (bool, str) - (is_valid, message)
-    """
-    skill_path = Path(skill_path)
-
-    # Check SKILL.md exists
-    skill_md = skill_path / "SKILL.md"
-    if not skill_md.exists():
-        return False, "SKILL.md not found"
-
-    # Read and validate frontmatter
-    content = skill_md.read_text()
-    if not content.startswith("---"):
-        return False, "No YAML frontmatter found"
-
-    # Extract frontmatter
-    match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-    if not match:
-        return False, "Invalid frontmatter format"
-
-    frontmatter_text = match.group(1)
-
-    # Simple check for required fields (without full YAML parsing)
-    has_name = re.search(r"^\s*name\s*:", frontmatter_text, re.MULTILINE)
-    has_description = re.search(r"^\s*description\s*:", frontmatter_text, re.MULTILINE)
-
-    if not has_name:
-        return False, "Missing 'name' in frontmatter"
-    if not has_description:
-        return False, "Missing 'description' in frontmatter"
-
-    return True, "Skill is valid!"
 
 
 def should_exclude(file_path, skill_root):
