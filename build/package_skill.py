@@ -9,12 +9,11 @@ Example:
     python build/package_skill.py skill-name
 """
 
-import sys
-import shutil
-import re
 import fnmatch
+import re
+import shutil
+import sys
 from pathlib import Path
-
 
 # Files and directories to exclude from packaging
 EXCLUDE_PATTERNS = {
@@ -61,6 +60,10 @@ EXCLUDE_PATTERNS = {
     "*.tmp",
     "*.bak",
     "*.cache",
+    "AGENTS.md",
+    "README.md",
+    "readme.md",
+    ".pyproject.toml",
 }
 
 
@@ -218,7 +221,7 @@ def package_skill(skill_path, output_dir="dist"):
                 files_added += 1
                 print(f"  ✓ Copied: {rel_path}")
 
-        print(f"\n📊 Summary:")
+        print("\n📊 Summary:")
         print(f"   Files copied: {files_added}")
         print(f"   Files excluded: {files_excluded}")
         print(f"\n✅ Successfully packaged skill to: {skill_output}")
@@ -238,7 +241,7 @@ def main():
 
     skill_path = sys.argv[1]
 
-    print(f"📦 Packaging skill to ./dist/")
+    print("📦 Packaging skill to ./dist/")
     print(f"   Source: {skill_path}\n")
 
     result = package_skill(skill_path)
