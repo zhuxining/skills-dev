@@ -1,5 +1,13 @@
 """技术指标计算工具,基于 TA-Lib 提供多类型行情指标计算。
 
+指标分类:
+1. 基础指标: ROCR(涨幅), MIDPRICE(中间价)
+2. 趋势方向: EMA(指数移动平均), MACD(趋势转换)
+3. 趋势强度: ADX(趋势力度评估)
+4. 动量指标: CCI(极端偏离), RSI(超买超卖), STOCH(区间扫点)
+5. 波动指标: ATR(波动幅度), BBANDS(震荡区间)
+6. 成交量: OBV(资金流向), AD(吸筹与派发)
+
 Main Functions:
   - compute_change: 多周期涨幅 (ROCR)
   - compute_ema: 指数移动平均 (EMA)
@@ -18,9 +26,9 @@ Main Functions:
 
 Usage:
   df = pd.read_csv('candlesticks.csv')
-  df = IndicatorCalculator.compute_ema(df)
-  df = IndicatorCalculator.compute_macd(df)
-  df = IndicatorCalculator.compute_full_suite(df)
+  df = compute_ema(df)
+  df = compute_macd(df)
+  df = compute_full_suite(df)
 """
 
 from collections.abc import Sequence
@@ -30,254 +38,564 @@ import numpy as np
 import pandas as pd
 import talib
 
+# ============================================================================
+# 默认参数配置
+# ============================================================================
+# 列名: close, high, low, volume
+# 涨幅周期: 1, 5, 10, 20
+# EMA 周期: 5, 10, 20, 60
+# MACD 周期: (12, 26, 9)
+# ADX 周期: 14, 7
+# RSI 周期: 7, 14
+# CCI 周期: 14, 7
+# STOCH 周期: (9, 3, 3)
+# ATR 周期: 3, 14
+# Bollinger Bands: (5, 2.0, 2.0, SMA)
+# 成交量 SMA 周期: 5, 10, 20
+# VWMA 周期: 5, 10
+# ============================================================================
 
-class IndicatorCalculator:
-    """技术指标计算器,按功能分类组织指标计算。
 
-    指标分类:
-    1. 基础指标: ROCR(涨幅), MIDPRICE(中间价)
-    2. 趋势方向: EMA(指数移动平均), MACD(趋势转换)
-    3. 趋势强度: ADX(趋势力度评估)
-    4. 动量指标: CCI(极端偏离), RSI(超买超卖), STOCH(区间扫点)
-    5. 波动指标: ATR(波动幅度), BBANDS(震荡区间)
-    6. 成交量: OBV(资金流向), AD(吸筹与派发)
-    """
+# ==================== 内部辅助函数 ====================
 
-    DEFAULT_CLOSE_COLUMN = "close"
-    DEFAULT_HIGH_COLUMN = "high"
-    DEFAULT_LOW_COLUMN = "low"
-    DEFAULT_CHANGE_PERIODS = (1, 5, 10, 20)
-    DEFAULT_EMA_PERIODS = (5, 10, 20, 60)
-    DEFAULT_MACD_PERIODS = (12, 26, 9)
-    DEFAULT_ADX_PERIODS = (14, 7)
-    DEFAULT_RSI_PERIODS = (7, 14)
-    DEFAULT_CCI_PERIODS = (14, 7)
-    DEFAULT_STOCH_PERIODS = (9, 3, 3)
-    DEFAULT_ATR_PERIODS = (3, 14)
-    DEFAULT_BBANDS_PARAMS = (5, 2.0, 2.0, talib.MA_Type.SMA)
-    DEFAULT_VOLUME_SMA_PERIODS = (5, 10, 20)
-    DEFAULT_VWMA_PERIODS = (5, 10)
+
+def _column_as_ndarray(frame: pd.DataFrame, column: str) -> np.ndarray:
+    """将 DataFrame 列转换为 numpy 数组."""
+    return frame[column].to_numpy(dtype=float, copy=False)
+
+
+def _ensure_columns(frame: pd.DataFrame, columns: Sequence[str]) -> None:
+    """验证 DataFrame 包含所需列."""
+    missing = [col for col in columns if col not in frame.columns]
+    if missing:
+        raise ValueError(f"DataFrame 缺少必需列: {', '.join(missing)}")
+
+
+def _get_columns_data(
+    frame: pd.DataFrame,
+    column_names: Sequence[str],
+) -> list[np.ndarray]:
+    """获取多个列的数据并验证其存在."""
+    _ensure_columns(frame, column_names)
+    return [_column_as_ndarray(frame, col) for col in column_names]
+
     # ==================== 基础指标 ====================
 
-    @staticmethod
-    def compute_change(
-        frame: pd.DataFrame,
-        *,
-        change_periods: Sequence[int] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算多周期涨幅 (ROCR)
 
-        衡量价格波动速度,突破 1.0 动量增强,低于 1.0 减弱。
-        """
+def compute_change(
+    frame: pd.DataFrame,
+    *,
+    change_periods: Sequence[int] | None = None,
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算多周期涨幅 (ROCR)
 
-        periods = tuple(change_periods or IndicatorCalculator.DEFAULT_CHANGE_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [close_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        for period in periods:
-            result[f"change_pct_{period}"] = talib.ROCP(close, timeperiod=period)
-        return result
+    衡量价格波动速度,突破 1.0 动量增强,低于 1.0 减弱。
 
-    @staticmethod
-    def compute_mid_price(
-        frame: pd.DataFrame,
-        *,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-    ) -> pd.DataFrame:
-        """计算高低价均值,生成中间价列."""
+    Args:
+        frame: 输入 DataFrame
+        change_periods: 周期列表,默认 (1, 5, 10, 20)
+        close_column: 收盘价列名
 
-        IndicatorCalculator._ensure_columns(frame, [high_column, low_column])
-        result = frame.copy()
-        high = IndicatorCalculator._column_as_ndarray(result, high_column)
-        low = IndicatorCalculator._column_as_ndarray(result, low_column)
-        result["mid_price"] = talib.MIDPRICE(high, low, timeperiod=2)
-        return result
+    Returns:
+        附加涨幅列的 DataFrame
+    """
+    periods = tuple(change_periods or (1, 5, 10, 20))
+    _ensure_columns(frame, [close_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+    for period in periods:
+        result[f"change_pct_{period}"] = talib.ROCP(close, timeperiod=period)
+    return result
 
-    # ==================== 趋势方向 ====================
-    @staticmethod
-    def compute_ema(
-        frame: pd.DataFrame,
-        *,
-        ema_periods: Sequence[int] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """使用 TA-Lib 计算多周期 EMA, 返回附加指标列后的 DataFrame."""
 
-        periods = tuple(ema_periods or IndicatorCalculator.DEFAULT_EMA_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [close_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        for period in periods:
-            column_name = f"ema_{period}"
-            result[column_name] = talib.EMA(close, timeperiod=period)
-        return result
+def compute_mid_price(
+    frame: pd.DataFrame,
+    *,
+    high_column: str = "high",
+    low_column: str = "low",
+) -> pd.DataFrame:
+    """计算高低价均值,生成中间价列."""
+    _ensure_columns(frame, [high_column, low_column])
+    result = frame.copy()
+    high = _column_as_ndarray(result, high_column)
+    low = _column_as_ndarray(result, low_column)
+    result["mid_price"] = talib.MIDPRICE(high, low, timeperiod=2)
+    return result
 
-    @staticmethod
-    def compute_macd(
-        frame: pd.DataFrame,
-        *,
-        macd_periods: Sequence[int] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算 MACD 及其 signal/histogram."""
 
-        periods = tuple(macd_periods or IndicatorCalculator.DEFAULT_MACD_PERIODS)
-        if len(periods) != 3:
-            raise ValueError("MACD 参数必须是 (fast, slow, signal) 三个整数")
-        IndicatorCalculator._ensure_columns(frame, [close_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        fast, slow, signal = periods
+# ==================== 趋势方向 ====================
+
+
+def compute_ema(
+    frame: pd.DataFrame,
+    *,
+    ema_periods: Sequence[int] | None = None,
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """使用 TA-Lib 计算多周期 EMA, 返回附加指标列后的 DataFrame.
+
+    Args:
+        frame: 输入 DataFrame
+        ema_periods: 周期列表,默认 (5, 10, 20, 60)
+        close_column: 收盘价列名
+
+    Returns:
+        附加 EMA 列的 DataFrame
+    """
+    periods = tuple(ema_periods or (5, 10, 20, 60))
+    _ensure_columns(frame, [close_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+    for period in periods:
+        column_name = f"ema_{period}"
+        result[column_name] = talib.EMA(close, timeperiod=period)
+    return result
+
+
+def compute_macd(
+    frame: pd.DataFrame,
+    *,
+    macd_periods: Sequence[int] | None = None,
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算 MACD 及其 signal/histogram.
+
+    Args:
+        frame: 输入 DataFrame
+        macd_periods: (fast, slow, signal) 周期,默认 (12, 26, 9)
+        close_column: 收盘价列名
+
+    Returns:
+        附加 MACD 列的 DataFrame
+    """
+    periods = tuple(macd_periods or (12, 26, 9))
+    if len(periods) != 3:
+        raise ValueError("MACD 参数必须是 (fast, slow, signal) 三个整数")
+    _ensure_columns(frame, [close_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+    fast, slow, signal = periods
+    macd, macd_signal, macd_hist = talib.MACD(
+        close, fastperiod=fast, slowperiod=slow, signalperiod=signal
+    )
+    result["macd"] = macd
+    result["macd_signal"] = macd_signal
+    result["macd_hist"] = macd_hist
+    return result
+
+
+# ==================== 趋势强度 ====================
+
+
+def compute_adx(
+    frame: pd.DataFrame,
+    *,
+    adx_periods: Sequence[int] | None = None,
+    high_column: str = "high",
+    low_column: str = "low",
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算多周期 ADX 指标.
+
+    Args:
+        frame: 输入 DataFrame
+        adx_periods: 周期列表,默认 (14, 7)
+        high_column: 最高价列名
+        low_column: 最低价列名
+        close_column: 收盘价列名
+
+    Returns:
+        附加 ADX 列的 DataFrame
+    """
+    periods = tuple(adx_periods or (14, 7))
+    _ensure_columns(frame, [high_column, low_column, close_column])
+    result = frame.copy()
+    high = _column_as_ndarray(result, high_column)
+    low = _column_as_ndarray(result, low_column)
+    close = _column_as_ndarray(result, close_column)
+    for period in periods:
+        result[f"adx_{period}"] = talib.ADX(high, low, close, timeperiod=period)
+    return result
+
+
+# ==================== 动量指标 ====================
+
+
+def compute_rsi(
+    frame: pd.DataFrame,
+    *,
+    rsi_periods: Sequence[int] | None = None,
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算多周期 RSI 指标.
+
+    Args:
+        frame: 输入 DataFrame
+        rsi_periods: 周期列表,默认 (7, 14)
+        close_column: 收盘价列名
+
+    Returns:
+        附加 RSI 列的 DataFrame
+    """
+    periods = tuple(rsi_periods or (7, 14))
+    _ensure_columns(frame, [close_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+    for period in periods:
+        result[f"rsi_{period}"] = talib.RSI(close, timeperiod=period)
+    return result
+
+
+def compute_cci(
+    frame: pd.DataFrame,
+    *,
+    cci_periods: Sequence[int] | None = None,
+    high_column: str = "high",
+    low_column: str = "low",
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算多周期 CCI 指标.
+
+    Args:
+        frame: 输入 DataFrame
+        cci_periods: 周期列表,默认 (14, 7)
+        high_column: 最高价列名
+        low_column: 最低价列名
+        close_column: 收盘价列名
+
+    Returns:
+        附加 CCI 列的 DataFrame
+    """
+    periods = tuple(cci_periods or (14, 7))
+    _ensure_columns(frame, [high_column, low_column, close_column])
+    result = frame.copy()
+    high = _column_as_ndarray(result, high_column)
+    low = _column_as_ndarray(result, low_column)
+    close = _column_as_ndarray(result, close_column)
+    for period in periods:
+        result[f"cci_{period}"] = talib.CCI(high, low, close, timeperiod=period)
+    return result
+
+
+def compute_stoch(
+    frame: pd.DataFrame,
+    *,
+    stoch_periods: Sequence[int] | None = None,
+    high_column: str = "high",
+    low_column: str = "low",
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算 Stochastic Oscillator (KDJ) 指标.
+
+    Args:
+        frame: 输入 DataFrame
+        stoch_periods: (period, fastk_period, fastd_period),默认 (9, 3, 3)
+        high_column: 最高价列名
+        low_column: 最低价列名
+        close_column: 收盘价列名
+
+    Returns:
+        附加 Stoch K/D 列的 DataFrame
+    """
+    periods = tuple(stoch_periods or (9, 3, 3))
+    if len(periods) != 3:
+        raise ValueError("STOCH 参数必须是 (period, fastk_period, fastd_period) 三个整数")
+    _ensure_columns(frame, [high_column, low_column, close_column])
+    result = frame.copy()
+    high = _column_as_ndarray(result, high_column)
+    low = _column_as_ndarray(result, low_column)
+    close = _column_as_ndarray(result, close_column)
+    period, fastk_period, fastd_period = periods
+    k_line, d_line = talib.STOCH(
+        high,
+        low,
+        close,
+        fastk_period=period,
+        slowk_period=fastk_period,
+        slowd_period=fastd_period,
+    )
+    result[f"stoch_k_{period}"] = k_line
+    result[f"stoch_d_{period}"] = d_line
+    return result
+
+
+# ==================== 波动指标 ====================
+
+
+def compute_atr(
+    frame: pd.DataFrame,
+    *,
+    atr_periods: Sequence[int] | None = None,
+    high_column: str = "high",
+    low_column: str = "low",
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """计算多周期 ATR.
+
+    Args:
+        frame: 输入 DataFrame
+        atr_periods: 周期列表,默认 (3, 14)
+        high_column: 最高价列名
+        low_column: 最低价列名
+        close_column: 收盘价列名
+
+    Returns:
+        附加 ATR 列的 DataFrame
+    """
+    periods = tuple(atr_periods or (3, 14))
+    _ensure_columns(frame, [high_column, low_column, close_column])
+    result = frame.copy()
+    high = _column_as_ndarray(result, high_column)
+    low = _column_as_ndarray(result, low_column)
+    close = _column_as_ndarray(result, close_column)
+    for period in periods:
+        result[f"atr_{period}"] = talib.ATR(high, low, close, timeperiod=period)
+    return result
+
+
+def compute_bbands(
+    frame: pd.DataFrame,
+    *,
+    bbands_params: Sequence[int | float] | None = None,
+    close_column: str = "close",
+) -> pd.DataFrame:
+    """使用 TA-Lib 计算布林带(Bollinger Bands).
+
+    Args:
+        frame: 输入 DataFrame
+        bbands_params: (timeperiod, nbdev_up, nbdev_dn, matype),默认 (5, 2.0, 2.0, SMA)
+        close_column: 收盘价列名
+
+    Returns:
+        附加 BBANDS 列的 DataFrame
+    """
+    _ensure_columns(frame, [close_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+
+    params = tuple(bbands_params or (5, 2.0, 2.0, talib.MA_Type.SMA))
+    if len(params) != 4:
+        raise ValueError("BBANDS 参数必须是 (timeperiod, nbdev_up, nbdev_dn, matype) 四个值")
+
+    timeperiod_val = int(params[0])
+    nbdev_up_val = float(params[1])
+    nbdev_dn_val = float(params[2])
+    matype_val = cast(talib.MA_Type, params[3])
+
+    upper, middle, lower = talib.BBANDS(
+        close,
+        timeperiod=timeperiod_val,
+        nbdevup=nbdev_up_val,
+        nbdevdn=nbdev_dn_val,
+        matype=matype_val,
+    )
+
+    result[f"bb_upper_{timeperiod_val}"] = upper
+    result[f"bb_middle_{timeperiod_val}"] = middle
+    result[f"bb_lower_{timeperiod_val}"] = lower
+
+    return result
+
+
+# ==================== 成交量 ====================
+
+
+def compute_obv(
+    frame: pd.DataFrame,
+    *,
+    close_column: str = "close",
+    volume_column: str = "volume",
+) -> pd.DataFrame:
+    """计算 OBV (On-Balance Volume) 指标.
+
+    Args:
+        frame: 输入 DataFrame
+        close_column: 收盘价列名
+        volume_column: 成交量列名
+
+    Returns:
+        附加 OBV 列的 DataFrame
+    """
+    _ensure_columns(frame, [close_column, volume_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+    volume = _column_as_ndarray(result, volume_column)
+    result["obv"] = talib.OBV(close, volume)
+    return result
+
+
+def compute_ad(
+    frame: pd.DataFrame,
+    *,
+    high_column: str = "high",
+    low_column: str = "low",
+    close_column: str = "close",
+    volume_column: str = "volume",
+) -> pd.DataFrame:
+    """计算 AD (Accumulation/Distribution) 指标.
+
+    Args:
+        frame: 输入 DataFrame
+        high_column: 最高价列名
+        low_column: 最低价列名
+        close_column: 收盘价列名
+        volume_column: 成交量列名
+
+    Returns:
+        附加 AD 列的 DataFrame
+    """
+    _ensure_columns(frame, [high_column, low_column, close_column, volume_column])
+    result = frame.copy()
+    high = _column_as_ndarray(result, high_column)
+    low = _column_as_ndarray(result, low_column)
+    close = _column_as_ndarray(result, close_column)
+    volume = _column_as_ndarray(result, volume_column)
+    result["ad"] = talib.AD(high, low, close, volume)
+    return result
+
+
+def compute_volume_sma(
+    frame: pd.DataFrame,
+    *,
+    volume_sma_periods: Sequence[int] | None = None,
+    volume_column: str = "volume",
+) -> pd.DataFrame:
+    """计算成交量的多周期 SMA(简单移动平均).
+
+    Args:
+        frame: 输入 DataFrame
+        volume_sma_periods: 周期列表,默认 (5, 10, 20)
+        volume_column: 成交量列名
+
+    Returns:
+        附加成交量 SMA 列的 DataFrame
+    """
+    periods = tuple(volume_sma_periods or (5, 10, 20))
+    _ensure_columns(frame, [volume_column])
+    result = frame.copy()
+    volume = _column_as_ndarray(result, volume_column)
+    for period in periods:
+        result[f"volume_sma_{period}"] = talib.SMA(volume, timeperiod=period)
+    return result
+
+
+def compute_vwma(
+    frame: pd.DataFrame,
+    *,
+    vwma_periods: Sequence[int] | None = None,
+    close_column: str = "close",
+    volume_column: str = "volume",
+) -> pd.DataFrame:
+    """计算成交量加权移动平均线 (VWMA).
+
+    VWMA 通过成交量加权价格,成交量大的交易日对均线影响更大。
+    计算公式: VWMA = SUM(价格 * 成交量) / SUM(成交量)
+
+    Args:
+        frame: 输入 DataFrame
+        vwma_periods: 周期列表,默认 (5, 10)
+        close_column: 收盘价列名
+        volume_column: 成交量列名
+
+    Returns:
+        附加 VWMA 列的 DataFrame
+    """
+    periods = tuple(vwma_periods or (5, 10))
+    _ensure_columns(frame, [close_column, volume_column])
+    result = frame.copy()
+    close = _column_as_ndarray(result, close_column)
+    volume = _column_as_ndarray(result, volume_column)
+
+    for period in periods:
+        # 计算价格*成交量的移动总和
+        pv_sum = talib.SUM(close * volume, timeperiod=period)
+        # 计算成交量的移动总和
+        v_sum = talib.SUM(volume, timeperiod=period)
+        # VWMA = (价格*成交量)之和 / 成交量之和
+        result[f"vwma_{period}"] = pv_sum / v_sum
+
+    return result
+
+
+# ==================== 辅助函数 ====================
+
+
+def compute_full_suite(
+    frame: pd.DataFrame,
+    *,
+    ema_periods: Sequence[int] | None = None,
+    macd_periods: Sequence[int] | None = None,
+    rsi_periods: Sequence[int] | None = None,
+    atr_periods: Sequence[int] | None = None,
+    bbands_params: Sequence[int | float] | None = None,
+    close_column: str = "close",
+    high_column: str = "high",
+    low_column: str = "low",
+    volume_column: str = "volume",
+) -> pd.DataFrame:
+    """一次性计算完整指标套件(EMA+MACD+RSI+ATR+OBV+BBANDS).
+
+    仅在初始时复制一次 DataFrame,避免多次内存复制,提高性能.
+
+    Args:
+        frame: 输入 DataFrame
+        ema_periods: EMA 周期列表,默认 (5, 10, 20, 60)
+        macd_periods: MACD 周期 (fast, slow, signal),默认 (12, 26, 9)
+        rsi_periods: RSI 周期列表,默认 (7, 14)
+        atr_periods: ATR 周期列表,默认 (3, 14)
+        bbands_params: BB 参数 (period, nbdev_up, nbdev_dn, matype),默认 (5, 2.0, 2.0, SMA)
+        close_column: 收盘价列名
+        high_column: 最高价列名
+        low_column: 最低价列名
+        volume_column: 成交量列名
+
+    Returns:
+        附加所有指标列的 DataFrame
+    """
+    # 仅复制一次,所有计算都在这个副本上进行
+    result = frame.copy()
+
+    # EMA
+    ema_periods = tuple(ema_periods or (5, 10, 20, 60))
+    close = _column_as_ndarray(result, close_column)
+    for period in ema_periods:
+        result[f"ema_{period}"] = talib.EMA(close, timeperiod=period)
+
+    # MACD
+    macd_periods = tuple(macd_periods or (12, 26, 9))
+    if len(macd_periods) == 3:
+        fast, slow, signal = macd_periods
         macd, macd_signal, macd_hist = talib.MACD(
             close, fastperiod=fast, slowperiod=slow, signalperiod=signal
         )
         result["macd"] = macd
         result["macd_signal"] = macd_signal
         result["macd_hist"] = macd_hist
-        return result
 
-    # ==================== 趋势强度 ====================
-    @staticmethod
-    def compute_adx(
-        frame: pd.DataFrame,
-        *,
-        adx_periods: Sequence[int] | None = None,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算多周期 ADX 指标."""
+    # RSI
+    rsi_periods = tuple(rsi_periods or (7, 14))
+    for period in rsi_periods:
+        result[f"rsi_{period}"] = talib.RSI(close, timeperiod=period)
 
-        periods = tuple(adx_periods or IndicatorCalculator.DEFAULT_ADX_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [high_column, low_column, close_column])
-        result = frame.copy()
-        high = IndicatorCalculator._column_as_ndarray(result, high_column)
-        low = IndicatorCalculator._column_as_ndarray(result, low_column)
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        for period in periods:
-            result[f"adx_{period}"] = talib.ADX(high, low, close, timeperiod=period)
-        return result
+    # ATR
+    atr_periods = tuple(atr_periods or (3, 14))
+    high, low = _get_columns_data(result, [high_column, low_column])
+    for period in atr_periods:
+        result[f"atr_{period}"] = talib.ATR(high, low, close, timeperiod=period)
 
-    # ==================== 动量指标 ====================
-    @staticmethod
-    def compute_rsi(
-        frame: pd.DataFrame,
-        *,
-        rsi_periods: Sequence[int] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算多周期 RSI 指标."""
+    # OBV
+    _ensure_columns(result, [volume_column])
+    volume = _column_as_ndarray(result, volume_column)
+    result["obv"] = talib.OBV(close, volume)
 
-        periods = tuple(rsi_periods or IndicatorCalculator.DEFAULT_RSI_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [close_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        for period in periods:
-            result[f"rsi_{period}"] = talib.RSI(close, timeperiod=period)
-        return result
-
-    @staticmethod
-    def compute_cci(
-        frame: pd.DataFrame,
-        *,
-        cci_periods: Sequence[int] | None = None,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算多周期 CCI 指标."""
-
-        periods = tuple(cci_periods or IndicatorCalculator.DEFAULT_CCI_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [high_column, low_column, close_column])
-        result = frame.copy()
-        high = IndicatorCalculator._column_as_ndarray(result, high_column)
-        low = IndicatorCalculator._column_as_ndarray(result, low_column)
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        for period in periods:
-            result[f"cci_{period}"] = talib.CCI(high, low, close, timeperiod=period)
-        return result
-
-    @staticmethod
-    def compute_stoch(
-        frame: pd.DataFrame,
-        *,
-        stoch_periods: Sequence[int] | None = None,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算 Stochastic Oscillator (KDJ) 指标."""
-
-        periods = tuple(stoch_periods or IndicatorCalculator.DEFAULT_STOCH_PERIODS)
-        if len(periods) != 3:
-            raise ValueError("STOCH 参数必须是 (period, fastk_period, fastd_period) 三个整数")
-        IndicatorCalculator._ensure_columns(frame, [high_column, low_column, close_column])
-        result = frame.copy()
-        high = IndicatorCalculator._column_as_ndarray(result, high_column)
-        low = IndicatorCalculator._column_as_ndarray(result, low_column)
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        period, fastk_period, fastd_period = periods
-        k_line, d_line = talib.STOCH(
-            high,
-            low,
-            close,
-            fastk_period=period,
-            slowk_period=fastk_period,
-            slowd_period=fastd_period,
-        )
-        result[f"stoch_k_{period}"] = k_line
-        result[f"stoch_d_{period}"] = d_line
-        return result
-
-    # ==================== 波动指标 ====================
-    @staticmethod
-    def compute_atr(
-        frame: pd.DataFrame,
-        *,
-        atr_periods: Sequence[int] | None = None,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """计算多周期 ATR."""
-
-        periods = tuple(atr_periods or IndicatorCalculator.DEFAULT_ATR_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [high_column, low_column, close_column])
-        result = frame.copy()
-        high = IndicatorCalculator._column_as_ndarray(result, high_column)
-        low = IndicatorCalculator._column_as_ndarray(result, low_column)
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        for period in periods:
-            result[f"atr_{period}"] = talib.ATR(high, low, close, timeperiod=period)
-        return result
-
-    @staticmethod
-    def compute_bbands(
-        frame: pd.DataFrame,
-        *,
-        bbands_params: Sequence[int | float] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-    ) -> pd.DataFrame:
-        """使用 TA-Lib 计算布林带(Bollinger Bands).
-
-        参数为元组 (timeperiod, nbdev_up, nbdev_dn, matype).
-        """
-
-        IndicatorCalculator._ensure_columns(frame, [close_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-
-        params = tuple(bbands_params or IndicatorCalculator.DEFAULT_BBANDS_PARAMS)
-        if len(params) != 4:
-            raise ValueError("BBANDS 参数必须是 (timeperiod, nbdev_up, nbdev_dn, matype) 四个值")
-
-        timeperiod_val = int(cast(int | float, params[0]))
-        nbdev_up_val = float(cast(int | float, params[1]))
-        nbdev_dn_val = float(cast(int | float, params[2]))
-        matype_val = cast(talib.MA_Type, params[3])
-
+    # Bollinger Bands
+    bb_params = tuple(bbands_params or (5, 2.0, 2.0, talib.MA_Type.SMA))
+    if len(bb_params) == 4:
+        timeperiod_val = int(bb_params[0])
+        nbdev_up_val = float(bb_params[1])
+        nbdev_dn_val = float(bb_params[2])
+        matype_val = cast(talib.MA_Type, bb_params[3])
         upper, middle, lower = talib.BBANDS(
             close,
             timeperiod=timeperiod_val,
@@ -285,151 +603,27 @@ class IndicatorCalculator:
             nbdevdn=nbdev_dn_val,
             matype=matype_val,
         )
-
         result[f"bb_upper_{timeperiod_val}"] = upper
         result[f"bb_middle_{timeperiod_val}"] = middle
         result[f"bb_lower_{timeperiod_val}"] = lower
 
-        return result
-
-    # ==================== 成交量 ====================
-    @staticmethod
-    def compute_obv(
-        frame: pd.DataFrame,
-        *,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-        volume_column: str = "volume",
-    ) -> pd.DataFrame:
-        """计算 OBV (On-Balance Volume) 指标."""
-
-        IndicatorCalculator._ensure_columns(frame, [close_column, volume_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        volume = IndicatorCalculator._column_as_ndarray(result, volume_column)
-        result["obv"] = talib.OBV(close, volume)
-        return result
-
-    @staticmethod
-    def compute_ad(
-        frame: pd.DataFrame,
-        *,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-        volume_column: str = "volume",
-    ) -> pd.DataFrame:
-        """计算 AD (Accumulation/Distribution) 指标."""
-
-        IndicatorCalculator._ensure_columns(
-            frame, [high_column, low_column, close_column, volume_column]
-        )
-        result = frame.copy()
-        high = IndicatorCalculator._column_as_ndarray(result, high_column)
-        low = IndicatorCalculator._column_as_ndarray(result, low_column)
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        volume = IndicatorCalculator._column_as_ndarray(result, volume_column)
-        result["ad"] = talib.AD(high, low, close, volume)
-        return result
-
-    @staticmethod
-    def compute_volume_sma(
-        frame: pd.DataFrame,
-        *,
-        volume_sma_periods: Sequence[int] | None = None,
-        volume_column: str = "volume",
-    ) -> pd.DataFrame:
-        """计算成交量的多周期 SMA(简单移动平均)。"""
-        periods = tuple(volume_sma_periods or IndicatorCalculator.DEFAULT_VOLUME_SMA_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [volume_column])
-        result = frame.copy()
-        volume = IndicatorCalculator._column_as_ndarray(result, volume_column)
-        # 为每个周期计算 SMA
-        for period in periods:
-            result[f"volume_sma_{period}"] = talib.SMA(volume, timeperiod=period)
-        return result
-
-    @staticmethod
-    def compute_vwma(
-        frame: pd.DataFrame,
-        *,
-        vwma_periods: Sequence[int] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-        volume_column: str = "volume",
-    ) -> pd.DataFrame:
-        """计算成交量加权移动平均线 (VWMA)。
-
-        VWMA 通过成交量加权价格,成交量大的交易日对均线影响更大。
-        计算公式: VWMA = SUM(价格 * 成交量) / SUM(成交量)
-        """
-        periods = tuple(vwma_periods or IndicatorCalculator.DEFAULT_VWMA_PERIODS)
-        IndicatorCalculator._ensure_columns(frame, [close_column, volume_column])
-        result = frame.copy()
-        close = IndicatorCalculator._column_as_ndarray(result, close_column)
-        volume = IndicatorCalculator._column_as_ndarray(result, volume_column)
-
-        for period in periods:
-            # 计算价格*成交量的移动总和
-            pv_sum = talib.SUM(close * volume, timeperiod=period)
-            # 计算成交量的移动总和
-            v_sum = talib.SUM(volume, timeperiod=period)
-            # VWMA = (价格*成交量)之和 / 成交量之和
-            result[f"vwma_{period}"] = pv_sum / v_sum
-
-        return result
-
-    # ==================== 辅助函数 ====================
-    @staticmethod
-    def compute_full_suite(
-        frame: pd.DataFrame,
-        *,
-        ema_periods: Sequence[int] | None = None,
-        macd_periods: Sequence[int] | None = None,
-        rsi_periods: Sequence[int] | None = None,
-        atr_periods: Sequence[int] | None = None,
-        bbands_params: Sequence[int | float] | None = None,
-        close_column: str = DEFAULT_CLOSE_COLUMN,
-        high_column: str = DEFAULT_HIGH_COLUMN,
-        low_column: str = DEFAULT_LOW_COLUMN,
-        volume_column: str = "volume",
-    ) -> pd.DataFrame:
-        """一次性计算完整指标套件(EMA+MACD+RSI+ATR+OBV+BBANDS)。
-
-        返回包含所有常用指标的 DataFrame,避免重复遍历数据。
-        """
-        result = frame.copy()
-        result = IndicatorCalculator.compute_ema(
-            result, ema_periods=ema_periods, close_column=close_column
-        )
-        result = IndicatorCalculator.compute_macd(
-            result, macd_periods=macd_periods, close_column=close_column
-        )
-        result = IndicatorCalculator.compute_rsi(
-            result, rsi_periods=rsi_periods, close_column=close_column
-        )
-        result = IndicatorCalculator.compute_atr(
-            result,
-            atr_periods=atr_periods,
-            high_column=high_column,
-            low_column=low_column,
-            close_column=close_column,
-        )
-        result = IndicatorCalculator.compute_obv(
-            result, close_column=close_column, volume_column=volume_column
-        )
-        result = IndicatorCalculator.compute_bbands(
-            result, bbands_params=bbands_params, close_column=close_column
-        )
-        return result
-
-    @staticmethod
-    def _column_as_ndarray(frame: pd.DataFrame, column: str) -> np.ndarray:
-        return frame[column].to_numpy(dtype=float, copy=False)
-
-    @staticmethod
-    def _ensure_columns(frame: pd.DataFrame, columns: Sequence[str]) -> None:
-        missing = [col for col in columns if col not in frame.columns]
-        if missing:
-            raise ValueError(f"DataFrame 缺少必需列: {', '.join(missing)}")
+    return result
 
 
-__all__ = ["IndicatorCalculator"]
+__all__ = [
+    "compute_ad",
+    "compute_adx",
+    "compute_atr",
+    "compute_bbands",
+    "compute_cci",
+    "compute_change",
+    "compute_ema",
+    "compute_full_suite",
+    "compute_macd",
+    "compute_mid_price",
+    "compute_obv",
+    "compute_rsi",
+    "compute_stoch",
+    "compute_volume_sma",
+    "compute_vwma",
+]

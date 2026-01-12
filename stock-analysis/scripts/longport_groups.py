@@ -13,9 +13,9 @@
 Usage:
     uv run longport_groups.py list
     uv run longport_groups.py create --name my_group --symbols 700.HK,AAPL.US
-    uv run longport_groups.py update --id 1 --add-symbols 000001.SZ
-    uv run longport_groups.py get-symbols --id 1
-    uv run longport_groups.py delete --id 1
+    uv run longport_groups.py update --id 4038104 --add-symbols 000001.SZ
+    uv run longport_groups.py get-symbols --id 4038104
+    uv run longport_groups.py delete --id 4038104
 
 Commands:
     list: 列出所有分组
@@ -27,8 +27,8 @@ Commands:
 Examples:
     uv run longport_groups.py list
     uv run longport_groups.py create --name "科技股" --symbols AAPL.US,MSFT.US
-    uv run longport_groups.py update --id 1 --add-symbols 700.HK,9988.HK
-    uv run longport_groups.py get-symbols --id 1 --output symbols.txt
+    uv run longport_groups.py update --id 4038104 --add-symbols 700.HK,9988.HK
+    uv run longport_groups.py get-symbols --id 4038104 --output symbols.txt
 """
 
 import argparse
