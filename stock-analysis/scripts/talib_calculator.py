@@ -105,7 +105,7 @@ def compute_change(
     result = frame.copy()
     close = _column_as_ndarray(result, close_column)
     for period in periods:
-        result[f"change_pct_{period}"] = talib.ROCP(close, timeperiod=period)
+        result[f"change_pct_{period}"] = np.round(talib.ROCP(close, timeperiod=period), 3)
     return result
 
 
@@ -120,7 +120,7 @@ def compute_mid_price(
     result = frame.copy()
     high = _column_as_ndarray(result, high_column)
     low = _column_as_ndarray(result, low_column)
-    result["mid_price"] = talib.MIDPRICE(high, low, timeperiod=2)
+    result["mid_price"] = np.round(talib.MIDPRICE(high, low, timeperiod=2), 3)
     return result
 
 
@@ -149,7 +149,7 @@ def compute_ema(
     close = _column_as_ndarray(result, close_column)
     for period in periods:
         column_name = f"ema_{period}"
-        result[column_name] = talib.EMA(close, timeperiod=period)
+        result[column_name] = np.round(talib.EMA(close, timeperiod=period), 3)
     return result
 
 
@@ -179,9 +179,9 @@ def compute_macd(
     macd, macd_signal, macd_hist = talib.MACD(
         close, fastperiod=fast, slowperiod=slow, signalperiod=signal
     )
-    result["macd"] = macd
-    result["macd_signal"] = macd_signal
-    result["macd_hist"] = macd_hist
+    result["macd"] = np.round(macd, 3)
+    result["macd_signal"] = np.round(macd_signal, 3)
+    result["macd_hist"] = np.round(macd_hist, 3)
     return result
 
 
@@ -215,7 +215,7 @@ def compute_adx(
     low = _column_as_ndarray(result, low_column)
     close = _column_as_ndarray(result, close_column)
     for period in periods:
-        result[f"adx_{period}"] = talib.ADX(high, low, close, timeperiod=period)
+        result[f"adx_{period}"] = np.round(talib.ADX(high, low, close, timeperiod=period), 3)
     return result
 
 
@@ -243,7 +243,7 @@ def compute_rsi(
     result = frame.copy()
     close = _column_as_ndarray(result, close_column)
     for period in periods:
-        result[f"rsi_{period}"] = talib.RSI(close, timeperiod=period)
+        result[f"rsi_{period}"] = np.round(talib.RSI(close, timeperiod=period), 3)
     return result
 
 
@@ -274,7 +274,7 @@ def compute_cci(
     low = _column_as_ndarray(result, low_column)
     close = _column_as_ndarray(result, close_column)
     for period in periods:
-        result[f"cci_{period}"] = talib.CCI(high, low, close, timeperiod=period)
+        result[f"cci_{period}"] = np.round(talib.CCI(high, low, close, timeperiod=period), 3)
     return result
 
 
@@ -315,8 +315,8 @@ def compute_stoch(
         slowk_period=fastk_period,
         slowd_period=fastd_period,
     )
-    result[f"stoch_k_{period}"] = k_line
-    result[f"stoch_d_{period}"] = d_line
+    result[f"stoch_k_{period}"] = np.round(k_line, 3)
+    result[f"stoch_d_{period}"] = np.round(d_line, 3)
     return result
 
 
@@ -350,7 +350,7 @@ def compute_atr(
     low = _column_as_ndarray(result, low_column)
     close = _column_as_ndarray(result, close_column)
     for period in periods:
-        result[f"atr_{period}"] = talib.ATR(high, low, close, timeperiod=period)
+        result[f"atr_{period}"] = np.round(talib.ATR(high, low, close, timeperiod=period), 3)
     return result
 
 
@@ -391,9 +391,9 @@ def compute_bbands(
         matype=matype_val,
     )
 
-    result[f"bb_upper_{timeperiod_val}"] = upper
-    result[f"bb_middle_{timeperiod_val}"] = middle
-    result[f"bb_lower_{timeperiod_val}"] = lower
+    result[f"bb_upper_{timeperiod_val}"] = np.round(upper, 3)
+    result[f"bb_middle_{timeperiod_val}"] = np.round(middle, 3)
+    result[f"bb_lower_{timeperiod_val}"] = np.round(lower, 3)
 
     return result
 
@@ -421,7 +421,7 @@ def compute_obv(
     result = frame.copy()
     close = _column_as_ndarray(result, close_column)
     volume = _column_as_ndarray(result, volume_column)
-    result["obv"] = talib.OBV(close, volume)
+    result["obv"] = np.round(talib.OBV(close, volume), 3)
     return result
 
 
@@ -451,7 +451,7 @@ def compute_ad(
     low = _column_as_ndarray(result, low_column)
     close = _column_as_ndarray(result, close_column)
     volume = _column_as_ndarray(result, volume_column)
-    result["ad"] = talib.AD(high, low, close, volume)
+    result["ad"] = np.round(talib.AD(high, low, close, volume), 3)
     return result
 
 
@@ -476,7 +476,7 @@ def compute_volume_sma(
     result = frame.copy()
     volume = _column_as_ndarray(result, volume_column)
     for period in periods:
-        result[f"volume_sma_{period}"] = talib.SMA(volume, timeperiod=period)
+        result[f"volume_sma_{period}"] = np.round(talib.SMA(volume, timeperiod=period), 3)
     return result
 
 
@@ -513,7 +513,7 @@ def compute_vwma(
         # 计算成交量的移动总和
         v_sum = talib.SUM(volume, timeperiod=period)
         # VWMA = (价格*成交量)之和 / 成交量之和
-        result[f"vwma_{period}"] = pv_sum / v_sum
+        result[f"vwma_{period}"] = np.round(pv_sum / v_sum, 3)
 
     return result
 
@@ -560,7 +560,7 @@ def compute_full_suite(
     ema_periods = tuple(ema_periods or (5, 10, 20, 60))
     close = _column_as_ndarray(result, close_column)
     for period in ema_periods:
-        result[f"ema_{period}"] = talib.EMA(close, timeperiod=period)
+        result[f"ema_{period}"] = np.round(talib.EMA(close, timeperiod=period), 3)
 
     # MACD
     macd_periods = tuple(macd_periods or (12, 26, 9))
@@ -569,25 +569,25 @@ def compute_full_suite(
         macd, macd_signal, macd_hist = talib.MACD(
             close, fastperiod=fast, slowperiod=slow, signalperiod=signal
         )
-        result["macd"] = macd
-        result["macd_signal"] = macd_signal
-        result["macd_hist"] = macd_hist
+        result["macd"] = np.round(macd, 3)
+        result["macd_signal"] = np.round(macd_signal, 3)
+        result["macd_hist"] = np.round(macd_hist, 3)
 
     # RSI
     rsi_periods = tuple(rsi_periods or (7, 14))
     for period in rsi_periods:
-        result[f"rsi_{period}"] = talib.RSI(close, timeperiod=period)
+        result[f"rsi_{period}"] = np.round(talib.RSI(close, timeperiod=period), 3)
 
     # ATR
     atr_periods = tuple(atr_periods or (3, 14))
     high, low = _get_columns_data(result, [high_column, low_column])
     for period in atr_periods:
-        result[f"atr_{period}"] = talib.ATR(high, low, close, timeperiod=period)
+        result[f"atr_{period}"] = np.round(talib.ATR(high, low, close, timeperiod=period), 3)
 
     # OBV
     _ensure_columns(result, [volume_column])
     volume = _column_as_ndarray(result, volume_column)
-    result["obv"] = talib.OBV(close, volume)
+    result["obv"] = np.round(talib.OBV(close, volume), 3)
 
     # Bollinger Bands
     bb_params = tuple(bbands_params or (5, 2.0, 2.0, talib.MA_Type.SMA))
@@ -603,9 +603,9 @@ def compute_full_suite(
             nbdevdn=nbdev_dn_val,
             matype=matype_val,
         )
-        result[f"bb_upper_{timeperiod_val}"] = upper
-        result[f"bb_middle_{timeperiod_val}"] = middle
-        result[f"bb_lower_{timeperiod_val}"] = lower
+        result[f"bb_upper_{timeperiod_val}"] = np.round(upper, 3)
+        result[f"bb_middle_{timeperiod_val}"] = np.round(middle, 3)
+        result[f"bb_lower_{timeperiod_val}"] = np.round(lower, 3)
 
     return result
 
