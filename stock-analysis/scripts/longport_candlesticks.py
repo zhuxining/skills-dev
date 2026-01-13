@@ -36,8 +36,8 @@ import sys
 from longport.openapi import AdjustType, Config, Period, QuoteContext
 import pandas as pd
 
-from output_helper import resolve_output_path
-from talib_calculator import (
+from _output_helper import resolve_output_path
+from _talib_calculator import (
     compute_ad,
     compute_adx,
     compute_atr,

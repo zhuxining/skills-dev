@@ -38,7 +38,7 @@ import sys
 
 from longport.openapi import Config, QuoteContext, SecuritiesUpdateMode
 
-from output_helper import resolve_output_path
+from _output_helper import resolve_output_path
 
 
 @contextmanager
