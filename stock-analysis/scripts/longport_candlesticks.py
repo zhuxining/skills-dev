@@ -19,8 +19,12 @@ Main Functions:
   - _candlesticks_to_df: 将响应转换为 DataFrame
 
 Usage:
-  uv run longport_candlesticks.py --symbol 700.HK --period day --count 200 --output /tmp/700.hk_day.csv
+  uv run longport_candlesticks.py --symbol 700.HK --period day --count 200 --output 700.hk_day.csv
   uv run longport_candlesticks.py --symbol 700.HK --period day --count 100 --indicators ema,macd,rsi
+
+Note:
+  - 所有输出统一保存在项目根目录的 output/ 文件夹
+  - 可以指定子路径, 如 --output stocks/700.hk.csv
 """
 
 import argparse
@@ -32,6 +36,7 @@ import sys
 from longport.openapi import AdjustType, Config, Period, QuoteContext
 import pandas as pd
 
+from output_helper import resolve_output_path
 from talib_calculator import (
     compute_ad,
     compute_adx,
@@ -40,7 +45,6 @@ from talib_calculator import (
     compute_cci,
     compute_change,
     compute_ema,
-    compute_full_suite,
     compute_macd,
     compute_mid_price,
     compute_obv,
@@ -107,9 +111,23 @@ def fetch_candlesticks_with_indicators(
     if df.empty:
         return df
 
-    # 如果未指定指标,计算完整套件
+    # 如果未指定指标,计算完整套件(包含所有常用指标)
     if indicators is None:
-        return compute_full_suite(df)
+        df = compute_change(df)  # 涨幅
+        df = compute_mid_price(df)  # 中间价
+        df = compute_ema(df)  # EMA
+        df = compute_macd(df)  # MACD
+        df = compute_rsi(df)  # RSI
+        df = compute_adx(df)  # ADX
+        df = compute_cci(df)  # CCI
+        df = compute_stoch(df)  # KDJ
+        df = compute_atr(df)  # ATR
+        df = compute_bbands(df)  # 布林带
+        df = compute_obv(df)  # OBV
+        df = compute_ad(df)  # A/D
+        df = compute_volume_sma(df)  # 成交量均线
+        df = compute_vwma(df)  # 成交量加权均线
+        return df
 
     # 计算指定的指标
     for indicator in indicators:
@@ -217,7 +235,7 @@ def main() -> None:
 
     parser.add_argument(
         "--output",
-        help="输出 CSV 路径。不填则打印前几行与汇总。",
+        help="输出文件名或相对路径 (如 data.csv 或 stocks/700.hk.csv), 统一保存在 output/ 文件夹。不填则打印到 stdout。",
     )
 
     parser.add_argument(
@@ -251,8 +269,9 @@ def main() -> None:
         sys.exit(1)
 
     if args.output:
-        df.to_csv(args.output)
-        print(f"✓ 已写入: {args.output}")
+        output_path = resolve_output_path(args.output)
+        df.to_csv(output_path)
+        print(f"✓ 已写入: {output_path}")
         print(f"  行数: {len(df)}")
         print(f"  列数: {len(df.columns)}")
         print(f"  时间范围: {df.index[0]} 至 {df.index[-1]}")

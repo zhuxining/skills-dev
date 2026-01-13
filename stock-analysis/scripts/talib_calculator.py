@@ -22,13 +22,11 @@ Main Functions:
   - compute_ad: 吸筹派发 (A/D)
   - compute_volume_sma: 成交量移动平均
   - compute_vwma: 成交量加权均线
-  - compute_full_suite: 完整指标套件 (EMA+MACD+RSI+ATR+OBV+BBANDS)
 
 Usage:
   df = pd.read_csv('candlesticks.csv')
   df = compute_ema(df)
   df = compute_macd(df)
-  df = compute_full_suite(df)
 """
 
 from collections.abc import Sequence
@@ -105,7 +103,7 @@ def compute_change(
     result = frame.copy()
     close = _column_as_ndarray(result, close_column)
     for period in periods:
-        result[f"change_pct_{period}"] = np.round(talib.ROCP(close, timeperiod=period), 3)
+        result[f"change_pct_{period}"] = np.round(talib.ROCP(close, timeperiod=period), 5)
     return result
 
 
@@ -518,98 +516,6 @@ def compute_vwma(
     return result
 
 
-# ==================== 辅助函数 ====================
-
-
-def compute_full_suite(
-    frame: pd.DataFrame,
-    *,
-    ema_periods: Sequence[int] | None = None,
-    macd_periods: Sequence[int] | None = None,
-    rsi_periods: Sequence[int] | None = None,
-    atr_periods: Sequence[int] | None = None,
-    bbands_params: Sequence[int | float] | None = None,
-    close_column: str = "close",
-    high_column: str = "high",
-    low_column: str = "low",
-    volume_column: str = "volume",
-) -> pd.DataFrame:
-    """一次性计算完整指标套件(EMA+MACD+RSI+ATR+OBV+BBANDS).
-
-    仅在初始时复制一次 DataFrame,避免多次内存复制,提高性能.
-
-    Args:
-        frame: 输入 DataFrame
-        ema_periods: EMA 周期列表,默认 (5, 10, 20, 60)
-        macd_periods: MACD 周期 (fast, slow, signal),默认 (12, 26, 9)
-        rsi_periods: RSI 周期列表,默认 (7, 14)
-        atr_periods: ATR 周期列表,默认 (3, 14)
-        bbands_params: BB 参数 (period, nbdev_up, nbdev_dn, matype),默认 (5, 2.0, 2.0, SMA)
-        close_column: 收盘价列名
-        high_column: 最高价列名
-        low_column: 最低价列名
-        volume_column: 成交量列名
-
-    Returns:
-        附加所有指标列的 DataFrame
-    """
-    # 仅复制一次,所有计算都在这个副本上进行
-    result = frame.copy()
-
-    # EMA
-    ema_periods = tuple(ema_periods or (5, 10, 20, 60))
-    close = _column_as_ndarray(result, close_column)
-    for period in ema_periods:
-        result[f"ema_{period}"] = np.round(talib.EMA(close, timeperiod=period), 3)
-
-    # MACD
-    macd_periods = tuple(macd_periods or (12, 26, 9))
-    if len(macd_periods) == 3:
-        fast, slow, signal = macd_periods
-        macd, macd_signal, macd_hist = talib.MACD(
-            close, fastperiod=fast, slowperiod=slow, signalperiod=signal
-        )
-        result["macd"] = np.round(macd, 3)
-        result["macd_signal"] = np.round(macd_signal, 3)
-        result["macd_hist"] = np.round(macd_hist, 3)
-
-    # RSI
-    rsi_periods = tuple(rsi_periods or (7, 14))
-    for period in rsi_periods:
-        result[f"rsi_{period}"] = np.round(talib.RSI(close, timeperiod=period), 3)
-
-    # ATR
-    atr_periods = tuple(atr_periods or (3, 14))
-    high, low = _get_columns_data(result, [high_column, low_column])
-    for period in atr_periods:
-        result[f"atr_{period}"] = np.round(talib.ATR(high, low, close, timeperiod=period), 3)
-
-    # OBV
-    _ensure_columns(result, [volume_column])
-    volume = _column_as_ndarray(result, volume_column)
-    result["obv"] = np.round(talib.OBV(close, volume), 3)
-
-    # Bollinger Bands
-    bb_params = tuple(bbands_params or (5, 2.0, 2.0, talib.MA_Type.SMA))
-    if len(bb_params) == 4:
-        timeperiod_val = int(bb_params[0])
-        nbdev_up_val = float(bb_params[1])
-        nbdev_dn_val = float(bb_params[2])
-        matype_val = cast(talib.MA_Type, bb_params[3])
-        upper, middle, lower = talib.BBANDS(
-            close,
-            timeperiod=timeperiod_val,
-            nbdevup=nbdev_up_val,
-            nbdevdn=nbdev_dn_val,
-            matype=matype_val,
-        )
-        result[f"bb_upper_{timeperiod_val}"] = np.round(upper, 3)
-        result[f"bb_middle_{timeperiod_val}"] = np.round(middle, 3)
-        result[f"bb_lower_{timeperiod_val}"] = np.round(lower, 3)
-
-    return result
-
-
 __all__ = [
     "compute_ad",
     "compute_adx",
@@ -618,7 +524,6 @@ __all__ = [
     "compute_cci",
     "compute_change",
     "compute_ema",
-    "compute_full_suite",
     "compute_macd",
     "compute_mid_price",
     "compute_obv",

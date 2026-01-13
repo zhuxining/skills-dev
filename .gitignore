@@ -18,6 +18,7 @@ logs
 *.log
 dist
 skill-test
+output/*
 
 # Node
 node_modules

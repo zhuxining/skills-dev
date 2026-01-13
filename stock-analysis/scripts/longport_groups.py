@@ -34,10 +34,11 @@ Examples:
 import argparse
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
 import sys
 
 from longport.openapi import Config, QuoteContext, SecuritiesUpdateMode
+
+from output_helper import resolve_output_path
 
 
 @contextmanager
@@ -146,7 +147,7 @@ def get_symbols(args: argparse.Namespace) -> None:
         return
 
     if args.output:
-        output_path = Path(args.output)
+        output_path = resolve_output_path(args.output)
         output_path.write_text("\n".join(symbols) + "\n")
         print(f"✓ 已保存: {output_path} ({len(symbols)} 个符号)")
     else:
@@ -197,7 +198,9 @@ def main() -> None:
     # get-symbols
     get_p = subparsers.add_parser("get-symbols", help="导出分组成员")
     get_p.add_argument("--id", type=int, required=True, help="分组 ID")
-    get_p.add_argument("--output", help="输出文件路径(逐行一个符号);不填则打印到 stdout")
+    get_p.add_argument(
+        "--output", help="输出文件名(逐行一个符号), 保存在 output/ 文件夹; 不填则打印到 stdout"
+    )
 
     # delete
     delete_p = subparsers.add_parser("delete", help="清空分组")
