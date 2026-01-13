@@ -15,7 +15,9 @@ Example:
     uv run build/package_skill.py skill-name
 """
 
+import argparse
 import fnmatch
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -25,6 +27,9 @@ if str(Path(__file__).parent) not in sys.path:
     sys.path.append(str(Path(__file__).parent))
 
 from quick_validate import validate_skill
+
+# Output directory configuration
+OUTPUT_DIR = "skill-test/.claude/skills/"
 
 # Files and directories to exclude from packaging
 EXCLUDE_PATTERNS = {
@@ -47,6 +52,9 @@ EXCLUDE_PATTERNS = {
     "venv",
     "env",
     ".venv",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
     # Node.js
     "node_modules",
     "package-lock.json",
@@ -71,13 +79,21 @@ EXCLUDE_PATTERNS = {
     "*.tmp",
     "*.bak",
     "*.cache",
+    # Documentation
     "AGENTS.md",
     "README.md",
     "readme.md",
-    "pyproject.toml",
-    "uv.lock",
-    ".python-version",
+    "INDEX.md",
 }
+
+# Pre-compile wildcard patterns for better performance
+WILDCARD_PATTERNS = [
+    re.compile(fnmatch.translate(pattern))
+    for pattern in EXCLUDE_PATTERNS
+    if "*" in pattern
+]
+
+EXACT_PATTERNS = {pattern for pattern in EXCLUDE_PATTERNS if "*" not in pattern}
 
 
 def should_exclude(file_path, skill_root):
@@ -95,33 +111,32 @@ def should_exclude(file_path, skill_root):
     rel_path = file_path.relative_to(skill_root)
     path_parts = rel_path.parts
 
-    # Check each part of the path
+    # Check each part of the path against exact patterns
     for part in path_parts:
-        if part in EXCLUDE_PATTERNS:
+        if part in EXACT_PATTERNS:
             return True
-        # Check wildcard patterns
-        for pattern in EXCLUDE_PATTERNS:
-            if "*" in pattern:
-                if fnmatch.fnmatch(part, pattern):
-                    return True
-
-    # Check the full relative path
-    rel_path_str = str(rel_path)
-    for pattern in EXCLUDE_PATTERNS:
-        if "*" in pattern:
-            if fnmatch.fnmatch(rel_path_str, pattern):
+        # Check wildcard patterns using pre-compiled regex
+        for pattern in WILDCARD_PATTERNS:
+            if pattern.match(part):
                 return True
+
+    # Check the full relative path against wildcard patterns
+    rel_path_str = str(rel_path)
+    for pattern in WILDCARD_PATTERNS:
+        if pattern.match(rel_path_str):
+            return True
 
     return False
 
 
-def package_skill(skill_path, output_dir="dist"):
+def package_skill(skill_path, output_dir=None, verbose=False):
     """
     Package a skill folder to output directory.
 
     Args:
         skill_path: Path to the skill folder
-        output_dir: Output directory (defaults to 'dist')
+        output_dir: Output directory (defaults to OUTPUT_DIR constant)
+        verbose: If True, print detailed file operations
 
     Returns:
         Path to the created skill folder, or None if error
@@ -153,6 +168,8 @@ def package_skill(skill_path, output_dir="dist"):
     print(f"✅ {message}\n")
 
     # Determine output location
+    if output_dir is None:
+        output_dir = OUTPUT_DIR
     skill_name = skill_path.name
     output_path = Path(output_dir).resolve()
     skill_output = output_path / skill_name
@@ -178,7 +195,8 @@ def package_skill(skill_path, output_dir="dist"):
                 # Check if file should be excluded
                 if should_exclude(file_path, skill_path):
                     files_excluded += 1
-                    print(f"  ⊘ Excluded: {file_path.relative_to(skill_path)}")
+                    if verbose:
+                        print(f"  ⊘ Excluded: {file_path.relative_to(skill_path)}")
                     continue
 
                 # Calculate the relative path and destination
@@ -187,11 +205,12 @@ def package_skill(skill_path, output_dir="dist"):
 
                 # Create parent directories if needed
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-
                 # Copy file
                 shutil.copy2(file_path, dest_path)
+
                 files_added += 1
-                print(f"  ✓ Copied: {rel_path}")
+                if verbose:
+                    print(f"  ✓ Copied: {rel_path}")
 
         print("\n📊 Summary:")
         print(f"   Files copied: {files_added}")
@@ -205,18 +224,31 @@ def package_skill(skill_path, output_dir="dist"):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python build/package_skill.py <skill-folder>")
-        print("\nExample:")
-        print("  python build/package_skill.py skill-name")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Package a skill folder to output directory",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  uv run build/package_skill.py stock-analysis
+  uv run build/package_skill.py stock-analysis -v
+        """,
+    )
 
-    skill_path = sys.argv[1]
+    parser.add_argument("skill_path", help="Path to the skill folder to package")
 
-    print("📦 Packaging skill to ./dist/")
-    print(f"   Source: {skill_path}\n")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed output for each file operation",
+    )
 
-    result = package_skill(skill_path)
+    args = parser.parse_args()
+
+    print(f"📦 Packaging skill to ./{OUTPUT_DIR}")
+    print(f"   Source: {args.skill_path}\n")
+
+    result = package_skill(args.skill_path, verbose=args.verbose)
 
     if result:
         sys.exit(0)

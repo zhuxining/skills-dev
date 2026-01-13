@@ -17,6 +17,7 @@ local.db*
 logs
 *.log
 dist
+skill-test
 
 # Node
 node_modules
